@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "CLI_TestingAgents"
+version = "0.1.0"
+description = "CLI Test Wise"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Sebas Duque", email = "jhoanduque1113@gmail.com" }]
+dependencies = [
+    "requests>=2.31",         # lo que tu librería necesite
+    "typer>=0.12",
+]
+
+[project.urls]
+Repository = "https://github.com/sebastian946/CLI_TestingAgents"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/testwise"]
+
+[project.scripts]
+testwise = "testwise.cli:app"
