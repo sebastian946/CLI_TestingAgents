@@ -11,6 +11,11 @@ requires-python = ">=3.9"
 license = "MIT"
 authors = [{ name = "Sebas Duque", email = "jhoanduque1113@gmail.com" }]
 dependencies = [
+    "playwright>=1.60.0",
+    "pydantic>=2.13.5",
+    "pydantic-ai>=0.8.1",
+    "pydantic-settings>=2.11.0",
+    "python-dotenv>=1.2.1",
     "requests>=2.31",         # lo que tu librería necesite
     "typer>=0.12",
 ]
@@ -21,5 +26,23 @@ Repository = "https://github.com/sebastian946/CLI_TestingAgents"
 [tool.hatch.build.targets.wheel]
 packages = ["src/testwise"]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.17.6",
+]
+
 [project.scripts]
 testwise = "testwise.cli:app"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
