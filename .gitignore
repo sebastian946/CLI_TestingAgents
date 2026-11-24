@@ -1,1 +1,6 @@
 .venv
+.env
+.testwise/auth/
+.ruff_cache
+__pycache__/
+*.pyc
