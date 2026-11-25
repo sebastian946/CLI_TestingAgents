@@ -196,3 +196,13 @@ def test_snapshot_command_accepts_a_timeout(site):
 
     assert result.exit_code == 1
     assert "timed out after 0.5 seconds" in result.output
+
+
+def test_snapshot_command_can_filter_the_snapshot(site):
+    result = runner.invoke(app, ["snapshot", f"{site}/sample_page.html", "--filter"])
+
+    assert result.exit_code == 0
+    assert 'button "Log in"' in result.output
+    assert "/url" not in result.output
+    assert "Filtered: " in result.output
+    assert "smaller)" in result.output
