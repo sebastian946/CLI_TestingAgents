@@ -1,8 +1,11 @@
 from importlib.metadata import version
+from pathlib import Path
 
 import typer
 
 from .core import greetings
+from .scaffold import InitError, init_project
+from .settings import PROVIDER_KEYS, Settings, SettingsError, get_settings
 
 app = typer.Typer(help="CLI Test Wise.", no_args_is_help=True)
 
@@ -20,16 +23,56 @@ def main(
         "--version",
         callback=_show_version,
         is_eager=True,
-        help="Muestra la versión y sale.",
+        help="Show the version and exit.",
     ),
 ) -> None:
     pass
 
 
+def load_settings_or_exit() -> Settings:
+    """Load the configuration; if something is missing, explain it and exit with 1.
+
+    Every command that uses the LLM must get its configuration from this function.
+    """
+    try:
+        return get_settings()
+    except SettingsError as error:
+        typer.secho(f"Incomplete configuration:\n{error}", fg="red", err=True)
+        typer.echo("Run `testwise init` to generate a .env.example.", err=True)
+        raise typer.Exit(code=1) from None
+
+
 @app.command()
 def greet(name: str) -> None:
-    """Saluda a NAME."""
+    """Greet NAME."""
     typer.echo(greetings(name))
+
+
+@app.command()
+def init() -> None:
+    """Set up the current project: .testwise/, .env.example and .gitignore."""
+    try:
+        steps = init_project(Path.cwd())
+    except InitError as error:
+        typer.secho(str(error), fg="red", err=True)
+        raise typer.Exit(code=1) from None
+
+    for changed, message in steps:
+        typer.secho(message, fg="green" if changed else None)
+    typer.echo("Next step: copy .env.example to .env and fill in your values.")
+
+
+@app.command()
+def check() -> None:
+    """Validate the configuration (model and API key) without calling the LLM."""
+    settings = load_settings_or_exit()
+    typer.echo(f"Main model: {settings.testwise_model}")
+    if settings.testwise_cheap_model:
+        typer.echo(f"Cheap model: {settings.testwise_cheap_model}")
+    env_var = PROVIDER_KEYS.get(settings.testwise_model.partition(":")[0])
+    if env_var:
+        typer.echo(f"API key: {env_var} is set")
+    typer.secho("Configuration is valid.", fg="green")
 
 
 if __name__ == "__main__":
