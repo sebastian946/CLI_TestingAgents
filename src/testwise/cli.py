@@ -1,9 +1,11 @@
 from importlib.metadata import version
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from .core import greetings
+from .explorer import DEFAULT_TIMEOUT, ExploreError, explore
 from .scaffold import InitError, init_project
 from .settings import PROVIDER_KEYS, Settings, SettingsError, get_settings
 
@@ -73,6 +75,34 @@ def check() -> None:
     if env_var:
         typer.echo(f"API key: {env_var} is set")
     typer.secho("Configuration is valid.", fg="green")
+
+
+@app.command()
+def snapshot(
+    url: str,
+    timeout: Annotated[
+        float, typer.Option(min=0.1, help="Seconds to wait for the page.")
+    ] = DEFAULT_TIMEOUT,
+    storage_state: Annotated[
+        Path | None,
+        typer.Option(
+            help="Playwright storage state file, to explore pages behind a login."
+        ),
+    ] = None,
+) -> None:
+    """Debug: open URL in headless Chromium and print its accessibility snapshot."""
+    try:
+        page_snapshot = explore(url, storage_state=storage_state, timeout=timeout)
+    except ExploreError as error:
+        typer.secho(str(error), fg="red", err=True)
+        raise typer.Exit(code=1) from None
+
+    captured_at = page_snapshot.captured_at.isoformat(timespec="seconds")
+    typer.echo(f"URL: {page_snapshot.url}")
+    typer.echo(f"Title: {page_snapshot.title}")
+    typer.echo(f"Captured at: {captured_at}")
+    typer.echo()
+    typer.echo(page_snapshot.aria_snapshot)
 
 
 if __name__ == "__main__":
