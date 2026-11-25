@@ -27,6 +27,14 @@ uv run testwise snapshot https://www.saucedemo.com --timeout 60
 uv run testwise snapshot https://example.com/account --storage-state state.json
 ```
 
+Add `--filter` to print the snapshot reduced to what the LLM needs (interactive
+elements, headings, regions and short texts) together with its size before and
+after:
+
+```
+uv run testwise snapshot https://books.toscrape.com --filter
+```
+
 ## Commands
 
 uv run ruff check .

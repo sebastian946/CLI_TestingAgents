@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 
 from .core import greetings
-from .explorer import DEFAULT_TIMEOUT, ExploreError, explore
+from .explorer import DEFAULT_TIMEOUT, ExploreError, explore, filter_with_stats
 from .scaffold import InitError, init_project
 from .settings import PROVIDER_KEYS, Settings, SettingsError, get_settings
 
@@ -89,6 +89,13 @@ def snapshot(
             help="Playwright storage state file, to explore pages behind a login."
         ),
     ] = None,
+    filtered: Annotated[
+        bool,
+        typer.Option(
+            "--filter",
+            help="Print the snapshot reduced to what the LLM needs, with its size.",
+        ),
+    ] = False,
 ) -> None:
     """Debug: open URL in headless Chromium and print its accessibility snapshot."""
     try:
@@ -102,7 +109,12 @@ def snapshot(
     typer.echo(f"Title: {page_snapshot.title}")
     typer.echo(f"Captured at: {captured_at}")
     typer.echo()
-    typer.echo(page_snapshot.aria_snapshot)
+    if filtered:
+        text, stats = filter_with_stats(page_snapshot.aria_snapshot)
+        typer.echo(text)
+        typer.secho(f"\nFiltered: {stats}", fg="green", err=True)
+    else:
+        typer.echo(page_snapshot.aria_snapshot)
 
 
 if __name__ == "__main__":
