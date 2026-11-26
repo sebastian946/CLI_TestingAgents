@@ -5,7 +5,15 @@ from typing import Annotated
 import typer
 
 from .core import greetings
-from .explorer import DEFAULT_TIMEOUT, ExploreError, explore, filter_with_stats
+from .explorer import (
+    DEFAULT_SESSION,
+    DEFAULT_TIMEOUT,
+    ExploreError,
+    explore,
+    filter_with_stats,
+    load_session,
+    save_session,
+)
 from .scaffold import InitError, init_project
 from .settings import PROVIDER_KEYS, Settings, SettingsError, get_settings
 
@@ -89,6 +97,21 @@ def snapshot(
             help="Playwright storage state file, to explore pages behind a login."
         ),
     ] = None,
+    auth_name: Annotated[
+        str | None,
+        typer.Option(
+            "--auth",
+            metavar="NAME",
+            help="Explore with a session saved by `testwise auth` (e.g. default).",
+        ),
+    ] = None,
+    ignore_http_errors: Annotated[
+        bool,
+        typer.Option(
+            "--ignore-http-errors",
+            help="Snapshot the page even if the server answers 4xx or 5xx.",
+        ),
+    ] = False,
     filtered: Annotated[
         bool,
         typer.Option(
@@ -98,8 +121,19 @@ def snapshot(
     ] = False,
 ) -> None:
     """Debug: open URL in headless Chromium and print its accessibility snapshot."""
+    if auth_name and storage_state:
+        typer.secho("Use --auth or --storage-state, not both.", fg="red", err=True)
+        raise typer.Exit(code=1)
+
     try:
-        page_snapshot = explore(url, storage_state=storage_state, timeout=timeout)
+        if auth_name:
+            storage_state = load_session(auth_name)
+        page_snapshot = explore(
+            url,
+            storage_state=storage_state,
+            timeout=timeout,
+            check_status=not ignore_http_errors,
+        )
     except ExploreError as error:
         typer.secho(str(error), fg="red", err=True)
         raise typer.Exit(code=1) from None
@@ -115,6 +149,45 @@ def snapshot(
         typer.secho(f"\nFiltered: {stats}", fg="green", err=True)
     else:
         typer.echo(page_snapshot.aria_snapshot)
+
+
+@app.command()
+def auth(
+    url: str,
+    name: Annotated[
+        str,
+        typer.Option(help="Name of the session, to keep several (admin, customer)."),
+    ] = DEFAULT_SESSION,
+    timeout: Annotated[
+        float, typer.Option(min=0.1, help="Seconds to wait for the page to open.")
+    ] = DEFAULT_TIMEOUT,
+) -> None:
+    """Log in by hand in a visible browser and save the session for later use."""
+
+    def wait_for_login(_page) -> None:
+        typer.echo("Log in in the browser window, including any 2FA step.")
+        typer.prompt(
+            "Press Enter here when you are logged in",
+            default="",
+            show_default=False,
+            prompt_suffix=" ",
+        )
+
+    typer.echo(f"Opening {url} in a browser window...")
+    try:
+        path = save_session(url, name, wait_for_login=wait_for_login, timeout=timeout)
+    except ExploreError as error:
+        typer.secho(str(error), fg="red", err=True)
+        raise typer.Exit(code=1) from None
+
+    typer.secho(f"Session '{name}' saved to {path}", fg="green")
+    typer.secho(
+        "Warning: this file contains your session cookies. Anyone who has it can "
+        "act as you on that site. It stays on this machine and is ignored by git: "
+        "do not share it or commit it.",
+        fg="yellow",
+    )
+    typer.echo(f"Use it with: testwise snapshot <url> --auth {name}")
 
 
 if __name__ == "__main__":
