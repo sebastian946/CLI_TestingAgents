@@ -19,6 +19,32 @@ uv run playwright install chromium
 
 ## Usage
 
+### Generate the locators of a page
+
+Set your model and API key first: `uv run testwise init` creates a
+`.env.example` to copy to `.env`, and `uv run testwise check` validates it.
+
+```
+uv run testwise locators https://www.saucedemo.com
+```
+
+This opens the page, reduces its accessibility snapshot, asks your model for
+the locators in a single call and saves them to
+`.testwise/pages/<name>.page.json`. It ends with a table of the locators and the
+tokens used.
+
+| Option | What it does |
+| --- | --- |
+| `--name checkout` | Name of the page. By default it comes from the URL. |
+| `--auth default` | Use a session saved by `testwise auth`. |
+| `--dry-run` | Run everything but do not write the file. |
+| `--force` | Replace a page.json that already exists. |
+
+Without `--force`, an existing page.json is never touched and the command stops
+before opening the browser or calling the model.
+
+### Inspect a page
+
 Print the accessibility snapshot of a page (debugging command):
 
 ```
