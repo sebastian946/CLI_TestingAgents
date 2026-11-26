@@ -31,14 +31,44 @@ def project(tmp_path, monkeypatch):
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SLOW_SECONDS = 3
+SESSION_COOKIE = "session=abc123"
+ACCOUNT_PAGE = "<title>Account</title><h1>Welcome back</h1>"
 LOGIN_PAGE = """
 <title>Sign in</title>
 <h1>Sign in</h1>
+<label>Password <input type="password"></label>
 <button onclick="
   document.cookie = 'session=abc123; path=/';
   localStorage.setItem('token', 't-1');
   document.title = 'Signed in';
 ">Log in</button>
+"""
+# Pages anyone can open.
+PUBLIC_PAGES = {
+    "/landing": "<title>Landing</title><h1>Landing</h1>",
+    "/login": LOGIN_PAGE,
+    # A login screen whose URL does not say so.
+    "/welcome": LOGIN_PAGE,
+    # A login step without a password field (it only asks for the email).
+    "/auth/start": "<title>Email</title><label>Email <input type='email'></label>",
+    # The password field exists but the user cannot see it.
+    "/hidden-password": "<title>Promo</title><input type='password' hidden>",
+}
+# Where each route sends every visitor, with or without a session.
+REDIRECTS = {"/redirect": "/landing", "/moved": "/sample_page.html"}
+# Private routes: where each one sends a visitor who has no session.
+PRIVATE_REDIRECTS = {
+    "/account": "/login",
+    "/dashboard": "/welcome",
+    "/orders": "/auth/start",
+    "/promo": "/hidden-password",
+}
+# A single-page app: the server always answers 200 and JavaScript redirects.
+SPA_PAGE = """
+<title>App</title><h1>App</h1>
+<script>
+  if (!document.cookie.includes('session=abc123')) location.replace('/welcome');
+</script>
 """
 
 
@@ -47,10 +77,24 @@ class FixtureHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         cookie = self.headers.get("Cookie", "")
-        if self.path == "/redirect":
-            self.send_response(302)
-            self.send_header("Location", "/sample_page.html")
-            self.end_headers()
+        logged_in = SESSION_COOKIE in cookie
+        if self.path in REDIRECTS:
+            self._redirect(REDIRECTS[self.path])
+        elif self.path in PUBLIC_PAGES:
+            self._send_html(PUBLIC_PAGES[self.path])
+        elif self.path in PRIVATE_REDIRECTS:
+            if logged_in:
+                self._send_html(ACCOUNT_PAGE)
+            else:
+                self._redirect(PRIVATE_REDIRECTS[self.path])
+        elif self.path == "/private":
+            # A private route that answers 401 instead of redirecting.
+            if logged_in:
+                self._send_html(ACCOUNT_PAGE)
+            else:
+                self.send_error(401)
+        elif self.path == "/app":
+            self._send_html(SPA_PAGE)
         elif self.path == "/error":
             self.send_error(500)
         elif self.path == "/slow":
@@ -58,16 +102,13 @@ class FixtureHandler(SimpleHTTPRequestHandler):
             self._send_html("<title>Slow</title><h1>Slow</h1>")
         elif self.path == "/whoami":
             self._send_html(f"<title>Who</title><h1>{cookie or 'no cookie'}</h1>")
-        elif self.path == "/login":
-            self._send_html(LOGIN_PAGE)
-        elif self.path == "/private":
-            # Only reachable with the cookie that the login page sets.
-            if "session=abc123" in cookie:
-                self._send_html("<title>Account</title><h1>Welcome back</h1>")
-            else:
-                self.send_error(401)
         else:
             super().do_GET()
+
+    def _redirect(self, location: str) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.end_headers()
 
     def _send_html(self, body: str) -> None:
         data = body.encode()

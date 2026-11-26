@@ -11,12 +11,16 @@ from playwright.sync_api import Page, StorageState, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel
 
+from .login_detection import is_login_redirect, is_login_url
+
 DEFAULT_TIMEOUT = 30.0
 # After the load event, SPAs keep rendering. Wait for the network to go quiet,
 # but only up to this many seconds: pages that poll never become idle.
 NETWORK_IDLE_TIMEOUT = 5.0
 ALLOWED_SCHEMES = ("http", "https", "file")
 INSTALL_HINT = "playwright install chromium"
+HTTP_UNAUTHORIZED = 401
+VISIBLE_PASSWORD_FIELD = "input[type=password]:visible"
 
 # Chromium network error code -> explanation for the user.
 NETWORK_ERRORS = {
@@ -37,6 +41,27 @@ class ExploreError(Exception):
     """The page could not be explored."""
 
 
+class LoginRequiredError(ExploreError):
+    """The page asked for is behind a login and the browser landed on the login.
+
+    `has_session` is True when a saved session was used and the site rejected
+    it anyway, which means that the session has expired.
+    """
+
+    def __init__(self, url: str, login_url: str, has_session: bool) -> None:
+        self.url = url
+        self.login_url = login_url
+        self.has_session = has_session
+        if has_session:
+            message = (
+                "The saved session has expired or is not valid for this page. "
+                f"Log in again with: testwise auth {url}"
+            )
+        else:
+            message = f"This page requires logging in. Run: testwise auth {url}"
+        super().__init__(message)
+
+
 class PageSnapshot(BaseModel):
     """What the explorer captured from a page."""
 
@@ -51,6 +76,7 @@ def explore(
     storage_state: str | Path | StorageState | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     check_status: bool = True,
+    check_login: bool = True,
 ) -> PageSnapshot:
     """Open `url` in headless Chromium and return its snapshot.
 
@@ -58,13 +84,20 @@ def explore(
     explore pages behind a login. `timeout` is in seconds and applies to each
     step (navigation, snapshot).
 
+    Landing on a login screen instead of the page asked for raises
+    LoginRequiredError, unless `check_login` is False.
+
     An HTTP 4xx/5xx response is an error unless `check_status` is False. Some
     single-page apps answer 404 on their inner routes and still render the page.
 
     Raises ExploreError with a user-facing message if the page cannot be read.
     """
     with open_page(
-        url, storage_state=storage_state, timeout=timeout, check_status=check_status
+        url,
+        storage_state=storage_state,
+        timeout=timeout,
+        check_status=check_status,
+        check_login=check_login,
     ) as page:
         return PageSnapshot(
             url=page.url,
@@ -81,6 +114,7 @@ def open_page(
     timeout: float = DEFAULT_TIMEOUT,
     headless: bool = True,
     check_status: bool = True,
+    check_login: bool = True,
 ) -> Generator[Page]:
     """Open `url` in Chromium and yield the loaded page.
 
@@ -88,7 +122,9 @@ def open_page(
     it is closed on exit. Any Playwright failure, during the navigation or
     inside the block, is raised as an ExploreError with a user-facing message.
 
-    With `check_status`, an HTTP 4xx/5xx response is an error.
+    With `check_login`, landing on a login screen instead of the page asked for
+    raises LoginRequiredError. With `check_status`, an HTTP 4xx/5xx response is
+    an error.
     """
     _check_url(url)
     _check_storage_state(storage_state)
@@ -103,13 +139,21 @@ def open_page(
                 page = context.new_page()
 
                 response = page.goto(url, wait_until="load", timeout=timeout_ms)
-                if check_status and response is not None and response.status >= 400:
+                # Wait before looking at the URL: single-page apps redirect to
+                # their login screen from JavaScript, after the load event.
+                _wait_for_network_idle(page, timeout)
+                status = response.status if response is not None else 200
+
+                if check_login and _landed_on_login(page, url, status):
+                    raise LoginRequiredError(
+                        url, page.url, has_session=storage_state is not None
+                    )
+                if check_status and status >= 400:
                     raise ExploreError(
                         f"Could not explore {url}: the server responded with "
-                        f"HTTP {response.status} {response.status_text}".rstrip()
+                        f"HTTP {status} {response.status_text}".rstrip()
                         + ". If the page still renders, use --ignore-http-errors."
                     )
-                _wait_for_network_idle(page, timeout)
 
                 yield page
             finally:
@@ -123,6 +167,13 @@ def open_page(
         ) from None
     except PlaywrightError as error:
         raise ExploreError(_describe_error(url, error.message)) from None
+
+
+def _landed_on_login(page: Page, url: str, status: int) -> bool:
+    if status == HTTP_UNAUTHORIZED:
+        return not is_login_url(url)
+    has_password_field = page.locator(VISIBLE_PASSWORD_FIELD).count() > 0
+    return is_login_redirect(url, page.url, has_password_field)
 
 
 def _check_url(url: str) -> None:

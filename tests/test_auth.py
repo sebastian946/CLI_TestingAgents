@@ -58,7 +58,7 @@ def test_session_is_saved_in_the_project(project, site):
 
 
 def test_private_page_needs_the_session(project, site):
-    with pytest.raises(ExploreError, match="HTTP 401"):
+    with pytest.raises(ExploreError, match="requires logging in|session has expired"):
         explore(f"{site}/private")
 
 
@@ -77,7 +77,7 @@ def test_sessions_with_different_names_are_kept_apart(project, site):
 
     assert admin != customer
     assert explore(f"{site}/private", storage_state=load_session("admin"))
-    with pytest.raises(ExploreError, match="HTTP 401"):
+    with pytest.raises(ExploreError, match="requires logging in|session has expired"):
         explore(f"{site}/private", storage_state=load_session("customer"))
 
 

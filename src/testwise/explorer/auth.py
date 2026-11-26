@@ -68,7 +68,9 @@ def save_session(
     ensure_gitignore((root or Path.cwd()) / ".gitignore")
 
     # A login page may answer 401/403 before the user logs in: not an error here.
-    with open_page(url, timeout=timeout, headless=headless, check_status=False) as page:
+    with open_page(
+        url, timeout=timeout, headless=headless, check_status=False, check_login=False
+    ) as page:
         wait_for_login(page)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:

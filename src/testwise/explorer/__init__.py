@@ -1,5 +1,11 @@
 from .auth import DEFAULT_SESSION, AuthError, load_session, save_session
-from .explorer import DEFAULT_TIMEOUT, ExploreError, PageSnapshot, explore
+from .explorer import (
+    DEFAULT_TIMEOUT,
+    ExploreError,
+    LoginRequiredError,
+    PageSnapshot,
+    explore,
+)
 from .snapshot_filter import FilterStats, filter_snapshot, filter_with_stats
 
 __all__ = [
@@ -8,6 +14,7 @@ __all__ = [
     "AuthError",
     "ExploreError",
     "FilterStats",
+    "LoginRequiredError",
     "PageSnapshot",
     "explore",
     "filter_snapshot",
