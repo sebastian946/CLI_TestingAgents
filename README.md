@@ -2,6 +2,31 @@
 
 [![CI](https://github.com/sebastian946/CLI_TestingAgents/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sebastian946/CLI_TestingAgents/actions/workflows/ci.yml)
 
+Test Wise is an open source CLI that generates the Playwright locators of a web
+page with a language model. You give it a URL and it saves a validated
+`page.json`. You bring your own model and API key (Anthropic, OpenAI or
+Gemini): there is no server in between.
+
+## How it works
+
+`testwise locators <url>` runs these steps:
+
+1. **Checks.** Reads the model and API key from your `.env` and stops if the
+   page already has a page.json.
+2. **Explore.** Opens the page in headless Chromium with Playwright and takes
+   its accessibility snapshot. It stops if the site sent you to a login screen.
+3. **Filter.** Reduces the snapshot to buttons, links, form fields, headings
+   and short texts. This is plain code, with no model involved.
+4. **Ask the model.** Sends fixed instructions and the filtered snapshot to
+   your model in a single call, and requires a structured answer.
+5. **Validate.** Every locator must follow the schema, have a unique name and
+   point to a text that exists in the snapshot. A wrong answer is sent back to
+   the model to be fixed, up to two times.
+6. **Save.** Writes `.testwise/pages/<name>.page.json` and prints the locators
+   and the tokens used.
+
+Steps 1 and 2 can stop the command before any token is spent.
+
 ## Setup
 
 Install the dependencies:
@@ -92,7 +117,22 @@ taken for a login screen, add `--skip-login-check`.
 `--ignore-http-errors` is for single-page apps such as saucedemo, whose server
 answers 404 on inner routes even though the page renders.
 
-## Commands
+## Security
+
+- Your API key is read from `.env` and is sent only to the provider you chose.
+- `testwise locators` sends the filtered snapshot of the page to that provider.
+  Do not run it on pages whose content you may not share with it.
+- Never commit or share `.env` or `.testwise/auth/`. Both are in `.gitignore`.
+- Run Test Wise only against sites you own or are authorized to test.
+
+See [SECURITY.md](SECURITY.md) for details and for how to report a
+vulnerability.
+
+## License
+
+[MIT](LICENSE)
+
+## Development
 
 uv run ruff check .
 
