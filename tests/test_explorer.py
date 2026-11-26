@@ -43,7 +43,7 @@ def test_content_rendered_after_load_is_captured(site):
 
 
 def test_url_is_the_final_one_after_redirects(site):
-    assert explore(f"{site}/redirect").url == f"{site}/sample_page.html"
+    assert explore(f"{site}/redirect").url == f"{site}/landing"
 
 
 def test_storage_state_is_applied(site):

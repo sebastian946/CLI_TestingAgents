@@ -9,6 +9,7 @@ from .explorer import (
     DEFAULT_SESSION,
     DEFAULT_TIMEOUT,
     ExploreError,
+    LoginRequiredError,
     explore,
     filter_with_stats,
     load_session,
@@ -85,6 +86,22 @@ def check() -> None:
     typer.secho("Configuration is valid.", fg="green")
 
 
+def _login_required_message(error: LoginRequiredError, auth_name: str | None) -> str:
+    """Tell the user which command fixes a page that needs a login."""
+    if not error.has_session:
+        return (
+            f"This page requires logging in. Run: testwise auth {error.url}\n"
+            f"Then repeat this command with --auth {DEFAULT_SESSION}."
+        )
+    if auth_name is None:
+        return str(error)
+    name_option = "" if auth_name == DEFAULT_SESSION else f" --name {auth_name}"
+    return (
+        f"The saved session '{auth_name}' has expired or is not valid for this "
+        f"page. Log in again with: testwise auth {error.url}{name_option}"
+    )
+
+
 @app.command()
 def snapshot(
     url: str,
@@ -112,6 +129,13 @@ def snapshot(
             help="Snapshot the page even if the server answers 4xx or 5xx.",
         ),
     ] = False,
+    skip_login_check: Annotated[
+        bool,
+        typer.Option(
+            "--skip-login-check",
+            help="Snapshot the page even if it looks like a login screen.",
+        ),
+    ] = False,
     filtered: Annotated[
         bool,
         typer.Option(
@@ -133,7 +157,12 @@ def snapshot(
             storage_state=storage_state,
             timeout=timeout,
             check_status=not ignore_http_errors,
+            check_login=not skip_login_check,
         )
+    except LoginRequiredError as error:
+        typer.secho(_login_required_message(error, auth_name), fg="red", err=True)
+        typer.echo("If that is not a login screen, add --skip-login-check.", err=True)
+        raise typer.Exit(code=1) from None
     except ExploreError as error:
         typer.secho(str(error), fg="red", err=True)
         raise typer.Exit(code=1) from None

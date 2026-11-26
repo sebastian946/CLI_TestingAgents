@@ -57,6 +57,12 @@ The session file contains your session cookies: anyone who has it can act as you
 on that site. It never leaves your machine, your password is never stored, and
 `testwise auth` adds `.testwise/auth/` to `.gitignore`. Do not share or commit it.
 
+If you open a private page without a session, or with one that has expired,
+Test Wise notices that the site sent you to its login screen and stops there
+with the `testwise auth` command to run, instead of working on the login screen
+by mistake. Asking for the login page itself works as usual. If a page is wrongly
+taken for a login screen, add `--skip-login-check`.
+
 `--ignore-http-errors` is for single-page apps such as saucedemo, whose server
 answers 404 on inner routes even though the page renders.
 
