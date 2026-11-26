@@ -9,6 +9,10 @@ Gemini): there is no server in between.
 
 ## How it works
 
+<p align="center">
+  <img src="docs/flow.png" alt="Flowchart of the testwise locators command" width="560">
+</p>
+
 `testwise locators <url>` runs these steps:
 
 1. **Checks.** Reads the model and API key from your `.env` and stops if the
