@@ -6,6 +6,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from pydantic_ai import models
+
+# Any attempt to reach a real LLM provider fails instead of spending money.
+models.ALLOW_MODEL_REQUESTS = False
 
 CONFIG_VARS = (
     "TESTWISE_MODEL",
