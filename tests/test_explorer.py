@@ -1,11 +1,6 @@
 import json
 import socket
-import threading
-import time
 from datetime import UTC, datetime, timedelta
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -14,51 +9,7 @@ from testwise.cli import app
 from testwise.explorer import ExploreError, PageSnapshot, explore
 from testwise.explorer.explorer import _describe_error
 
-FIXTURES = Path(__file__).parent / "fixtures"
-SLOW_SECONDS = 3
 runner = CliRunner()
-
-
-class FixtureHandler(SimpleHTTPRequestHandler):
-    """Serves tests/fixtures plus a few routes that simulate server behavior."""
-
-    def do_GET(self):
-        if self.path == "/redirect":
-            self.send_response(302)
-            self.send_header("Location", "/sample_page.html")
-            self.end_headers()
-        elif self.path == "/error":
-            self.send_error(500)
-        elif self.path == "/slow":
-            time.sleep(SLOW_SECONDS)
-            self._send_html("<title>Slow</title><h1>Slow</h1>")
-        elif self.path == "/whoami":
-            cookie = self.headers.get("Cookie", "no cookie")
-            self._send_html(f"<title>Who</title><h1>{cookie}</h1>")
-        else:
-            super().do_GET()
-
-    def _send_html(self, body: str) -> None:
-        data = body.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def log_message(self, *args) -> None:
-        pass
-
-
-@pytest.fixture(scope="module")
-def site():
-    """Local HTTP server with the HTML fixtures. Yields its base URL."""
-    handler = partial(FixtureHandler, directory=str(FIXTURES))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
-    server.server_close()
 
 
 def closed_port_url() -> str:
@@ -206,3 +157,21 @@ def test_snapshot_command_can_filter_the_snapshot(site):
     assert "/url" not in result.output
     assert "Filtered: " in result.output
     assert "smaller)" in result.output
+
+
+def test_http_errors_can_be_ignored(site):
+    snapshot = explore(f"{site}/missing.html", check_status=False)
+
+    assert "404" in snapshot.aria_snapshot
+
+
+def test_snapshot_command_can_ignore_http_errors(site):
+    url = f"{site}/missing.html"
+
+    failed = runner.invoke(app, ["snapshot", url])
+    ignored = runner.invoke(app, ["snapshot", url, "--ignore-http-errors"])
+
+    assert failed.exit_code == 1
+    assert "--ignore-http-errors" in failed.output
+    assert ignored.exit_code == 0
+    assert "404" in ignored.output

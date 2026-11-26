@@ -37,7 +37,7 @@ def init_project(root: Path) -> list[tuple[bool, str]]:
     return [
         _ensure_dir(root / TESTWISE_DIR),
         _ensure_env_example(root / ENV_EXAMPLE_FILE),
-        _ensure_gitignore(root / GITIGNORE_FILE),
+        ensure_gitignore(root / GITIGNORE_FILE),
     ]
 
 
@@ -57,7 +57,7 @@ def _ensure_env_example(file: Path) -> tuple[bool, str]:
     return True, f"{file.name} created"
 
 
-def _ensure_gitignore(file: Path) -> tuple[bool, str]:
+def ensure_gitignore(file: Path) -> tuple[bool, str]:
     content = file.read_text(encoding="utf-8") if file.exists() else ""
     present = {line.strip() for line in content.splitlines()}
     missing = [entry for entry in GITIGNORE_ENTRIES if entry not in present]

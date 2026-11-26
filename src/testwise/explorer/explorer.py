@@ -1,13 +1,14 @@
 """Opens a page with Playwright and captures its structure. No LLM involved."""
 
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Page, StorageState, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 from pydantic import BaseModel
 
 DEFAULT_TIMEOUT = 30.0
@@ -47,8 +48,9 @@ class PageSnapshot(BaseModel):
 
 def explore(
     url: str,
-    storage_state: str | Path | dict[str, Any] | None = None,
+    storage_state: str | Path | StorageState | None = None,
     timeout: float = DEFAULT_TIMEOUT,
+    check_status: bool = True,
 ) -> PageSnapshot:
     """Open `url` in headless Chromium and return its snapshot.
 
@@ -56,7 +58,37 @@ def explore(
     explore pages behind a login. `timeout` is in seconds and applies to each
     step (navigation, snapshot).
 
+    An HTTP 4xx/5xx response is an error unless `check_status` is False. Some
+    single-page apps answer 404 on their inner routes and still render the page.
+
     Raises ExploreError with a user-facing message if the page cannot be read.
+    """
+    with open_page(
+        url, storage_state=storage_state, timeout=timeout, check_status=check_status
+    ) as page:
+        return PageSnapshot(
+            url=page.url,
+            title=page.title(),
+            aria_snapshot=page.locator("body").aria_snapshot(),
+            captured_at=datetime.now(UTC),
+        )
+
+
+@contextmanager
+def open_page(
+    url: str,
+    storage_state: str | Path | StorageState | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    headless: bool = True,
+    check_status: bool = True,
+) -> Generator[Page]:
+    """Open `url` in Chromium and yield the loaded page.
+
+    The browser only lives inside the `with` block: use the page there, because
+    it is closed on exit. Any Playwright failure, during the navigation or
+    inside the block, is raised as an ExploreError with a user-facing message.
+
+    With `check_status`, an HTTP 4xx/5xx response is an error.
     """
     _check_url(url)
     _check_storage_state(storage_state)
@@ -64,28 +96,26 @@ def explore(
 
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(headless=headless)
             try:
                 context = browser.new_context(storage_state=storage_state)
                 context.set_default_timeout(timeout_ms)
                 page = context.new_page()
 
                 response = page.goto(url, wait_until="load", timeout=timeout_ms)
-                if response is not None and response.status >= 400:
+                if check_status and response is not None and response.status >= 400:
                     raise ExploreError(
                         f"Could not explore {url}: the server responded with "
                         f"HTTP {response.status} {response.status_text}".rstrip()
+                        + ". If the page still renders, use --ignore-http-errors."
                     )
                 _wait_for_network_idle(page, timeout)
 
-                return PageSnapshot(
-                    url=page.url,
-                    title=page.title(),
-                    aria_snapshot=page.locator("body").aria_snapshot(),
-                    captured_at=datetime.now(UTC),
-                )
+                yield page
             finally:
-                browser.close()
+                # The user may have closed the window already.
+                with suppress(PlaywrightError):
+                    browser.close()
     except PlaywrightTimeoutError:
         raise ExploreError(
             f"Could not explore {url}: timed out after {timeout:g} seconds. "
@@ -103,7 +133,7 @@ def _check_url(url: str) -> None:
         )
 
 
-def _check_storage_state(storage_state: str | Path | dict[str, Any] | None) -> None:
+def _check_storage_state(storage_state: str | Path | StorageState | None) -> None:
     if isinstance(storage_state, str | Path) and not Path(storage_state).is_file():
         raise ExploreError(f"Storage state file not found: {storage_state}")
 
